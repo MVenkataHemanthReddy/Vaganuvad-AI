@@ -399,7 +399,7 @@ def build_ui():
         update_event.set()
 
     with gr.Blocks(
-        title="Telugu ↔ Hindi Speech Translator",
+        title="Vaganuvad AI — Indic Speech Translator",
         theme=gr.themes.Soft(primary_hue="blue", secondary_hue="green"),
         css="""
         .status-listening {
@@ -437,8 +437,8 @@ def build_ui():
         }
         """
     ) as app:
-        gr.Markdown("# 🎙️ Telugu ↔ Hindi + English — Live Speech Translator")
-        gr.Markdown("*Noise-suppressed · Mixed language · Fully offline*")
+        gr.Markdown("# 🎙️ Vaganuvad AI (वागनुवाद) — Live Speech Translator")
+        gr.Markdown("*Telugu ↔ Hindi + English · Noise-suppressed · Mixed language · Fully offline*")
 
         # Status bar
         status_box = gr.Markdown("🔴 **STOPPED**", elem_classes=["status-stopped"])

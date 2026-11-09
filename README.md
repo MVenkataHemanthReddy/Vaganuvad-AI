@@ -1,6 +1,6 @@
-# 🎙️ Telugu ↔ Hindi + English — Real-Time Speech Translator
+# 🎙️ Vaganuvad AI (वागनुवाद) — Real-Time Indic Speech Translator
 
-An offline, low-latency, real-time speech-to-text and speech-to-speech translation pipeline bridging **Telugu** and **Hindi**, with simultaneous **English** output. Built with Meta's **SeamlessM4T v2 Large**, **Silero VAD**, and an interactive **Gradio** web interface.
+**Vaganuvad AI** is an offline, low-latency, real-time speech-to-text and speech-to-speech translation pipeline bridging **Telugu** and **Hindi**, with simultaneous **English** output. Built with Meta's **SeamlessM4T v2 Large**, **Silero VAD**, and an interactive **Gradio** web interface.
 
 ---
 
@@ -53,8 +53,8 @@ An offline, low-latency, real-time speech-to-text and speech-to-speech translati
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/MVenkataHemanthReddy/Telugu-Hindi-Speech-Translation.git
-cd Telugu-Hindi-Speech-Translation
+git clone https://github.com/MVenkataHemanthReddy/Vaganuvad-AI.git
+cd Vaganuvad-AI
 ```
 
 ### 2. Set Up Virtual Environment & Dependencies
