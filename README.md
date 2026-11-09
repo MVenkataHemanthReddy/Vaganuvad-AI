@@ -6,12 +6,13 @@
 
 ## 🌟 Key Features
 
-- **Bidirectional Live Translation**: Instant bidirectional translation between **Telugu (తెలుగు)** and **Hindi (हिन्दी)**.
-- **Dual Output**: Provides translation in the target Indic language alongside an immediate English translation.
+- **Universal Speech Input (Auto-Detect)**: Automatically accepts input speech in **any language** (Telugu, Hindi, English, Tamil, Kannada, Malayalam, Bengali, Marathi, Spanish, French, German, Japanese, Chinese, Arabic, and more) without manual configuration.
+- **Dual Live Output**: Delivers simultaneous translations in both a primary target language (e.g. Hindi, Telugu) and secondary target language (e.g. English).
+- **Interactive Language Selectors**: Real-time dropdowns to customize input and target languages on the fly, plus a quick 1-click swap button.
 - **Noise Suppression**: Built-in spectral gating noise reduction via `noisereduce` to eliminate background hums and environmental audio noise.
 - **Voice Activity Detection (VAD)**: Powered by ONNX-optimized **Silero VAD** for ultra-fast silence detection and utterance chunking.
 - **Fully Offline**: Runs completely on local models without requiring cloud APIs or internet connectivity once weights are cached.
-- **Interactive Gradio UI**: Complete control dashboard with Start/Stop Mic, Direction Switch, Pause, Speech History, and Text-to-Speech playback.
+- **Interactive Gradio UI**: Complete control dashboard with Start/Stop Mic, Quick Target Swap, Pause, Speech History, and Text-to-Speech playback.
 - **Speaker Verification Support**: Ready-to-enable speaker verification via `resemblyzer` for panel demos.
 
 ---
@@ -19,7 +20,7 @@
 ## 🏗️ Architecture
 
 ```
-[ Microphone (16kHz) ]
+[ Microphone (16kHz) - Any Language ]
           │
           ▼
    [ Silero VAD ]  ───(Silence / Noise)───► Discard
@@ -29,10 +30,10 @@
 [ Noise Suppression (Spectral Gating) ]
           │
           ▼
- [ SeamlessM4T v2 Large (Audio Encoder) ]
+ [ SeamlessM4T v2 Large (Audio Encoder) ]  (Automatic Source Language Inference)
           │
-          ├───► [ Target Language Generation (Telugu / Hindi) ]
-          └───► [ English Translation Generation ]
+          ├───► [ Primary Target Translation (e.g., Hindi / Telugu) ]
+          └───► [ Secondary Target Translation (e.g., English) ]
           │
           ▼
 [ Gradio UI + Windows TTS Playback ]

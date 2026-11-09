@@ -90,9 +90,61 @@ SILENCE_MS = 600
 MIN_SPEECH_MS = 500
 MAX_SPEECH_MS = 15000
 
+INPUT_LANG_MAP = {
+    "Auto-Detect (Any Spoken Language)": "auto",
+    "Telugu (తెలుగు)": "tel",
+    "Hindi (हिन्दी)": "hin",
+    "English": "eng",
+    "Tamil (தமிழ்)": "tam",
+    "Kannada (ಕನ್ನಡ)": "kan",
+    "Malayalam (മലയാളം)": "mal",
+    "Bengali (বাংলা)": "ben",
+    "Marathi (मराठी)": "mar",
+    "Gujarati (ગુજરાતી)": "guj",
+    "Punjabi (ਪੰਜਾਬੀ)": "pan",
+    "Urdu (اردو)": "urd",
+    "Odia (ଓଡ଼ିଆ)": "ory",
+    "Spanish (Español)": "spa",
+    "French (Français)": "fra",
+    "German (Deutsch)": "deu",
+    "Japanese (日本語)": "jpn",
+    "Chinese (Mandarin)": "cmn",
+    "Arabic (العربية)": "arb",
+    "Russian (Русский)": "rus",
+    "Korean (한국어)": "kor",
+    "Italian (Italiano)": "ita",
+    "Portuguese (Português)": "por",
+}
+
+TARGET_LANG_MAP = {
+    "Hindi (हिन्दी)": "hin",
+    "Telugu (తెలుగు)": "tel",
+    "English": "eng",
+    "Tamil (தமிழ்)": "tam",
+    "Kannada (ಕನ್ನಡ)": "kan",
+    "Malayalam (മലയാളം)": "mal",
+    "Bengali (বাংলা)": "ben",
+    "Marathi (मराठी)": "mar",
+    "Gujarati (ગુજરાતી)": "guj",
+    "Punjabi (ਪੰਜਾਬੀ)": "pan",
+    "Urdu (اردو)": "urd",
+    "Spanish (Español)": "spa",
+    "French (Français)": "fra",
+    "German (Deutsch)": "deu",
+    "Japanese (日本語)": "jpn",
+    "Chinese (Mandarin)": "cmn",
+    "Arabic (العربية)": "arb",
+    "Russian (Русский)": "rus",
+    "Korean (한국어)": "kor",
+}
+
 LANG_MAP = {
     "te": {"s2t": "tel", "name": "Telugu"},
     "hi": {"s2t": "hin", "name": "Hindi"},
+    "auto": {"s2t": "auto", "name": "Any Language"},
+    "tel": {"s2t": "tel", "name": "Telugu"},
+    "hin": {"s2t": "hin", "name": "Hindi"},
+    "eng": {"s2t": "eng", "name": "English"},
 }
 
 # =============================================================================
@@ -101,31 +153,48 @@ LANG_MAP = {
 
 class State:
     def __init__(self):
-        self.src = "hi"
-        self.tgt = "te"
+        self.src = "auto"
+        self.tgt = "hin"
+        self.secondary_tgt = "eng"
+        self.src_name = "Any Language (Auto)"
+        self.tgt_name = "Hindi"
+        self.secondary_name = "English"
         self.paused = False
         self.running = False
         self.last_target = ""
-        self.last_english = ""
+        self.last_secondary = ""
         self.history = []
         self.lock = threading.Lock()
 
-    def switch(self):
+    @property
+    def last_english(self):
+        return self.last_secondary
+
+    @last_english.setter
+    def last_english(self, val):
+        self.last_secondary = val
+
+    def switch_target(self):
         with self.lock:
-            self.src, self.tgt = self.tgt, self.src
+            if self.tgt == "hin":
+                self.tgt = "tel"
+                self.tgt_name = "Telugu"
+            else:
+                self.tgt = "hin"
+                self.tgt_name = "Hindi"
+
+    def switch(self):
+        # Backward-compatible toggle
+        self.switch_target()
 
     @property
     def src_s2t(self):
-        return LANG_MAP[self.src]["s2t"]
+        return self.src
+
     @property
     def tgt_s2t(self):
-        return LANG_MAP[self.tgt]["s2t"]
-    @property
-    def src_name(self):
-        return LANG_MAP[self.src]["name"]
-    @property
-    def tgt_name(self):
-        return LANG_MAP[self.tgt]["name"]
+        return self.tgt
+
     @property
     def direction_str(self):
         return f"{self.src_name} → {self.tgt_name}"
@@ -340,15 +409,26 @@ def pipeline_loop(update_fn):
             # if not is_target_speaker(utt, SAMPLE_RATE):
             #     continue  # Skip — not the registered speaker
 
-            src = state.src_s2t
-            tgt = state.tgt_s2t
-            direction = state.direction_str
+            with state.lock:
+                src = state.src
+                tgt = state.tgt
+                sec_tgt = state.secondary_tgt
+                src_label = state.src_name
+                tgt_label = state.tgt_name
+                sec_label = state.secondary_name
+                direction = state.direction_str
 
-            # Translate to target
-            t0 = time.perf_counter()
+            # Audio tensor
             aud = torch.from_numpy(utt).float().unsqueeze(0)
-            inp = processor(audio=aud, src_lang=src, sampling_rate=SAMPLE_RATE,
-                           return_tensors="pt")
+
+            # Preprocess audio with processor:
+            # When src is 'auto', omit src_lang so SeamlessM4T automatically identifies input speech language
+            proc_kwargs = {"audio": aud, "sampling_rate": SAMPLE_RATE, "return_tensors": "pt"}
+            if src and src != "auto":
+                proc_kwargs["src_lang"] = src
+
+            t0 = time.perf_counter()
+            inp = processor(**proc_kwargs)
             inp_gpu = {k: v.to(device) for k, v in inp.items()}
             target_text = translate(inp_gpu, tgt)
             ms1 = (time.perf_counter() - t0) * 1000
@@ -356,27 +436,27 @@ def pipeline_loop(update_fn):
             if not target_text:
                 continue
 
-            # Translate to English
-            t1 = time.perf_counter()
-            inp2 = processor(audio=aud, src_lang=src, sampling_rate=SAMPLE_RATE,
-                            return_tensors="pt")
-            inp2_gpu = {k: v.to(device) for k, v in inp2.items()}
-            eng_text = translate(inp2_gpu, "eng")
-            ms2 = (time.perf_counter() - t1) * 1000
+            # Secondary translation (e.g. English or chosen secondary)
+            sec_text = ""
+            ms2 = 0
+            if sec_tgt and sec_tgt != tgt:
+                t1 = time.perf_counter()
+                sec_text = translate(inp_gpu, sec_tgt)
+                ms2 = (time.perf_counter() - t1) * 1000
 
             total_ms = ms1 + ms2
 
-            print(f"DEBUG: target_text={target_text!r} | eng_text={eng_text!r} | tgt={tgt} | src={src}")
+            print(f"DEBUG: [{src_label} -> {tgt_label}] target={target_text!r} | [{sec_label}]={sec_text!r}")
 
             # Save
             with state.lock:
                 state.last_target = target_text
-                state.last_english = eng_text or ""
+                state.last_secondary = sec_text or ""
                 timestamp = time.strftime("%H:%M:%S")
                 entry = (f"**{timestamp}** · {direction} · "
                          f"{dur:.0f}ms speech · {total_ms:.0f}ms translate\n\n"
-                         f"**{state.tgt_name}:** {target_text}\n\n"
-                         f"🇬🇧 {eng_text}")
+                         f"🎯 **{tgt_label}:** {target_text}\n\n"
+                         f"🌐 **{sec_label}:** {sec_text}")
                 state.history.insert(0, entry)
                 if len(state.history) > 50:
                     state.history.pop()
@@ -438,45 +518,66 @@ def build_ui():
         """
     ) as app:
         gr.Markdown("# 🎙️ Vaganuvad AI (वागनुवाद) — Live Speech Translator")
-        gr.Markdown("*Telugu ↔ Hindi + English · Noise-suppressed · Mixed language · Fully offline*")
+        gr.Markdown("*Accepts Any Spoken Language · Real-Time Indic & Multilingual Translation · Fully Offline*")
 
         # Status bar
         status_box = gr.Markdown("🔴 **STOPPED**", elem_classes=["status-stopped"])
 
         # Direction display
         direction_display = gr.Markdown(
-            f"### {state.direction_str} (+English)",
+            f"### {state.direction_str} (+{state.secondary_name})",
             elem_id="direction"
         )
+
+        # Language Selection Controls
+        with gr.Row():
+            src_dropdown = gr.Dropdown(
+                choices=list(INPUT_LANG_MAP.keys()),
+                value="Auto-Detect (Any Spoken Language)",
+                label="🎤 Input Language",
+                interactive=True,
+            )
+            tgt_dropdown = gr.Dropdown(
+                choices=list(TARGET_LANG_MAP.keys()),
+                value="Hindi (हिन्दी)",
+                label="🎯 Primary Target Language",
+                interactive=True,
+            )
+            sec_dropdown = gr.Dropdown(
+                choices=list(TARGET_LANG_MAP.keys()),
+                value="English",
+                label="🌐 Secondary Target Language",
+                interactive=True,
+            )
 
         # Control buttons
         with gr.Row():
             start_btn = gr.Button("🎙️ Start Mic", variant="primary", size="lg")
             stop_btn = gr.Button("⏹️ Stop Mic", variant="stop", size="lg")
-            switch_btn = gr.Button("🔄 Switch", variant="secondary", size="lg")
+            switch_btn = gr.Button("🔄 Swap Telugu ⮂ Hindi", variant="secondary", size="lg")
             pause_btn = gr.Button("⏸️ Pause", variant="secondary", size="lg")
 
         # Translation output
         with gr.Row():
             with gr.Column():
-                gr.Markdown(f"#### 🔄 {state.tgt_name} Translation")
+                tgt_label_display = gr.Markdown(f"#### 🎯 {state.tgt_name} Translation")
                 target_box = gr.Textbox(
                     label="", lines=3, interactive=False,
-                    placeholder="Translation appears here...",
+                    placeholder="Primary translation appears here...",
                     elem_classes=["translation-box"], elem_id="target_box"
                 )
             with gr.Column():
-                gr.Markdown("#### 🇬🇧 English Translation")
-                english_box = gr.Textbox(
+                sec_label_display = gr.Markdown(f"#### 🌐 {state.secondary_name} Translation")
+                secondary_box = gr.Textbox(
                     label="", lines=3, interactive=False,
-                    placeholder="English appears here...",
+                    placeholder="Secondary translation appears here...",
                     elem_classes=["translation-box"], elem_id="english_box"
                 )
 
         # Speak buttons
         with gr.Row():
-            speak_eng_btn = gr.Button("🔊 Speak English", variant="primary", size="lg")
-            speak_tgt_btn = gr.Button("🔊 Speak Target", variant="primary", size="lg")
+            speak_tgt_btn = gr.Button("🔊 Speak Primary Target", variant="primary", size="lg")
+            speak_sec_btn = gr.Button("🔊 Speak Secondary Target", variant="primary", size="lg")
 
         # History
         gr.Markdown("---")
@@ -487,6 +588,30 @@ def build_ui():
 
         # ---- Button handlers ----
 
+        def on_change_src(new_src_name):
+            with state.lock:
+                state.src_name = "Auto (Any Language)" if "Auto" in new_src_name else new_src_name.split(" ")[0]
+                state.src = INPUT_LANG_MAP.get(new_src_name, "auto")
+            return f"### {state.direction_str} (+{state.secondary_name})"
+
+        def on_change_tgt(new_tgt_name):
+            with state.lock:
+                state.tgt_name = new_tgt_name.split(" ")[0]
+                state.tgt = TARGET_LANG_MAP.get(new_tgt_name, "hin")
+            return (
+                f"### {state.direction_str} (+{state.secondary_name})",
+                f"#### 🎯 {state.tgt_name} Translation"
+            )
+
+        def on_change_sec(new_sec_name):
+            with state.lock:
+                state.secondary_name = new_sec_name.split(" ")[0]
+                state.secondary_tgt = TARGET_LANG_MAP.get(new_sec_name, "eng")
+            return (
+                f"### {state.direction_str} (+{state.secondary_name})",
+                f"#### 🌐 {state.secondary_name} Translation"
+            )
+
         def on_start():
             global pipeline_thread
             start_mic()
@@ -495,7 +620,7 @@ def build_ui():
             pipeline_thread.start()
             return (
                 gr.Markdown("🟢 **LISTENING**", elem_classes=["status-listening"]),
-                f"### {state.direction_str} (+English)"
+                f"### {state.direction_str} (+{state.secondary_name})"
             )
 
         def on_stop():
@@ -503,15 +628,18 @@ def build_ui():
             return gr.Markdown("🔴 **STOPPED**", elem_classes=["status-stopped"])
 
         def on_switch():
-            state.switch()
+            state.switch_target()
+            new_val = "Telugu (తెలుగు)" if state.tgt == "tel" else "Hindi (हिन्दी)"
             status = "LISTENING" if state.running else "STOPPED"
             cls = "status-listening" if state.running else "status-stopped"
             if state.paused:
                 status = "PAUSED"
                 cls = "status-paused"
             return (
-                f"### {state.direction_str} (+English)",
-                gr.Markdown(f"🔄 **{status} — Switched to {state.direction_str}**",
+                new_val,
+                f"### {state.direction_str} (+{state.secondary_name})",
+                f"#### 🎯 {state.tgt_name} Translation",
+                gr.Markdown(f"🔄 **{status} — Switched Target to {state.tgt_name}**",
                            elem_classes=[cls])
             )
 
@@ -522,8 +650,8 @@ def build_ui():
             else:
                 return gr.Markdown("🟢 **LISTENING**", elem_classes=["status-listening"])
 
-        def on_speak_eng():
-            speak_text(state.last_english)
+        def on_speak_sec():
+            speak_text(state.last_secondary)
 
         def on_speak_tgt():
             speak_text(state.last_target)
@@ -536,22 +664,27 @@ def build_ui():
             """Get latest translations for UI."""
             with state.lock:
                 target = state.last_target
-                english = state.last_english
+                sec = state.last_secondary
                 hist = "\n\n---\n\n".join(state.history) if state.history else "*No translations yet...*"
-            return target, english, hist
+            return target, sec, hist
+
+        # Wire language selectors
+        src_dropdown.change(on_change_src, inputs=[src_dropdown], outputs=[direction_display])
+        tgt_dropdown.change(on_change_tgt, inputs=[tgt_dropdown], outputs=[direction_display, tgt_label_display])
+        sec_dropdown.change(on_change_sec, inputs=[sec_dropdown], outputs=[direction_display, sec_label_display])
 
         # Wire buttons
         start_btn.click(on_start, outputs=[status_box, direction_display])
         stop_btn.click(on_stop, outputs=[status_box])
-        switch_btn.click(on_switch, outputs=[direction_display, status_box])
+        switch_btn.click(on_switch, outputs=[tgt_dropdown, direction_display, tgt_label_display, status_box])
         pause_btn.click(on_pause, outputs=[status_box])
-        speak_eng_btn.click(on_speak_eng)
+        speak_sec_btn.click(on_speak_sec)
         speak_tgt_btn.click(on_speak_tgt)
         clear_btn.click(on_clear, outputs=[history_box])
 
         # Auto-update translations using Timer
         timer = gr.Timer(1)
-        timer.tick(get_updates, outputs=[target_box, english_box, history_box])
+        timer.tick(get_updates, outputs=[target_box, secondary_box, history_box])
 
     return app
 
